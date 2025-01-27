@@ -1,14 +1,15 @@
 <?php
 
-namespace App\Repositories;
+namespace App\Repositories\Api;
 
+use App\Http\Resources\PaginatedResource;
 use App\Repositories\Api\Contracts\BaseRepositoryInterface;
 use App\Http\Resources\BaseResource;
 use Illuminate\Database\Eloquent\Model;
 
 class BaseRepository implements BaseRepositoryInterface
 {
-    protected $model;
+    protected Model $model;
     protected $resourceClass;
 
     public function __construct(Model $model, $resourceClass = null)
@@ -17,26 +18,29 @@ class BaseRepository implements BaseRepositoryInterface
         $this->resourceClass = $resourceClass;
     }
 
-    public function all($orderBy = 'DESC', $orderByKey = 'id' , $conditions = [], $paginate = false, $perPage = 15): BaseResource
+    public function all($orderBy = 'DESC', $orderByKey = 'id', $filters = [], $search = null, $searchColumns = [], $paginate = false, $perPage = 15): BaseResource|PaginatedResource
     {
         $query = $this->model->orderBy($orderByKey, $orderBy);
 
-        foreach ($conditions as $condition) {
-            if (isset($condition['type']) && $condition['type'] === 'or') {
-                $query->orWhere($condition['field'], $condition['operator'] ?? '=', $condition['value']);
-            } else {
-                $query->where($condition['field'], $condition['operator'] ?? '=', $condition['value']);
-            }
+        foreach ($filters as $field => $value) {
+            $query->where($field, $value);
         }
+
+        if ($search && count($searchColumns) > 0) {
+            $query->where(function ($q) use ($search, $searchColumns) {
+                foreach ($searchColumns as $column) {
+                    $q->orWhere($column, 'LIKE', "%$search%");
+                }
+            });
+        }
+
+        $result = $paginate ? $query->paginate($perPage) : $query->get();
 
         if ($paginate) {
-            $result = $query->paginate($perPage);
-        } else {
-            $result = $query->get();
+            return new PaginatedResource($result);
         }
 
-        return new BaseResource($result, $this->resourceClass);
-    }
+        return new BaseResource($result, $this->resourceClass);    }
 
     public function find($id): ?BaseResource
     {
@@ -46,8 +50,10 @@ class BaseRepository implements BaseRepositoryInterface
 
     public function create(array $data): BaseResource
     {
-        $result = $this->model->create($data);
-        return new BaseResource($result, $this->resourceClass);
+        return \DB::transaction(function () use ($data) {
+            $result = $this->model->create($data);
+            return new BaseResource($result, $this->resourceClass);
+        });
     }
 
     public function update($id, array $data): BaseResource
