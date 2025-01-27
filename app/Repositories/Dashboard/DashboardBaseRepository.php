@@ -16,30 +16,50 @@ class DashboardBaseRepository implements DashboardBaseRepositoryInterface
     }
 
     /**
-     * Get all records with optional conditions and ordering.
+     * Build a query with conditions and optional search.
      */
-    public function all($orderBy = 'DESC', $orderByKey = 'id', $conditions = [])
+    protected function buildQuery($orderBy = 'DESC', $orderByKey = 'id', $conditions = [], $search = null, $searchColumns = [])
     {
         $query = $this->model->orderBy($orderByKey, $orderBy);
 
+        // Apply conditions
         foreach ($conditions as $field => $value) {
             $query->where($field, $value);
         }
 
+        // Apply search if search term and columns are provided
+        if ($search && !empty($searchColumns)) {
+            $query->where(function ($q) use ($search, $searchColumns) {
+                foreach ($searchColumns as $column) {
+                    $q->orWhere($column, 'LIKE', '%' . $search . '%');
+                }
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * Get all records with optional conditions and search.
+     */
+    public function all($orderBy = 'DESC', $orderByKey = 'id', $conditions = [], $search = null, $searchColumns = [])
+    {
+        $query = $this->buildQuery($orderBy, $orderByKey, $conditions, $search, $searchColumns);
         return $query->get();
     }
 
     /**
-     * Paginate records with optional conditions and ordering.
+     * Paginate records with optional conditions and search.
      */
-    public function paginate($perPage = 15, $orderBy = 'DESC', $orderByKey = 'id', $conditions = []): LengthAwarePaginator
-    {
-        $query = $this->model->orderBy($orderByKey, $orderBy);
-
-        foreach ($conditions as $field => $value) {
-            $query->where($field, $value);
-        }
-
+    public function paginate(
+        $perPage = 15,
+        $orderBy = 'DESC',
+        $orderByKey = 'id',
+        $conditions = [],
+        $search = null,
+        $searchColumns = []
+    ): LengthAwarePaginator {
+        $query = $this->buildQuery($orderBy, $orderByKey, $conditions, $search, $searchColumns);
         return $query->paginate($perPage);
     }
 
