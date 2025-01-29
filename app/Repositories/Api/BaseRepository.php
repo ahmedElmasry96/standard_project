@@ -65,9 +65,11 @@ class BaseRepository implements BaseRepositoryInterface
         return $query;
     }
 
-    public function find($id): ?BaseResource
+    public function find($id, $with = []): ?BaseResource
     {
-        $result = $this->model->findOrFail($id);
+        $query = empty($with) ? $this->model : $this->model->with($with);
+        $result = $query->findOrFail($id);
+
         return $result ? new BaseResource($result, $this->resourceClass) : null;
     }
 
