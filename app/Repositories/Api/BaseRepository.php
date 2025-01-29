@@ -1,11 +1,12 @@
 <?php
 
-namespace App\Repositories\Api;
+namespace App\Repositories;
 
 use App\Http\Resources\PaginatedResource;
-use App\Repositories\Api\Contracts\BaseRepositoryInterface;
+use App\Repositories\Contracts\BaseRepositoryInterface;
 use App\Http\Resources\BaseResource;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class BaseRepository implements BaseRepositoryInterface
 {
@@ -30,7 +31,7 @@ class BaseRepository implements BaseRepositoryInterface
 
         $result = $paginate ? $query->paginate($perPage) : $query->get();
 
-        return $paginate ? new PaginatedResource($result) : new BaseResource($result, $this->resourceClass);
+        return $paginate ? new PaginatedResource($result, $this->resourceClass) : new BaseResource($result, $this->resourceClass);
     }
 
     /**
@@ -64,7 +65,6 @@ class BaseRepository implements BaseRepositoryInterface
 
         return $query;
     }
-
     public function find($id, $with = []): ?BaseResource
     {
         $query = empty($with) ? $this->model : $this->model->with($with);
@@ -75,7 +75,7 @@ class BaseRepository implements BaseRepositoryInterface
 
     public function create(array $data): BaseResource
     {
-        return \DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data) {
             $result = $this->model->create($data);
             return new BaseResource($result, $this->resourceClass);
         });
