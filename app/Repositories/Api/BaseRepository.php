@@ -18,8 +18,14 @@ class BaseRepository implements BaseRepositoryInterface
         $this->resourceClass = $resourceClass;
     }
 
-    public function all($orderBy = 'DESC', $orderByKey = 'id', $filters = [], $search = null, $searchColumns = [], $paginate = false, $perPage = 15): BaseResource|PaginatedResource
+    public function all($orderBy = 'DESC', $filters = [], $searchColumns = []): BaseResource|PaginatedResource
     {
+        $paginate = request('pagination', false);
+        $perPage = request('per_page', false);
+        $orderBy = request('order_by', $orderBy);
+        $orderByKey = request('order_by_key', 'id');
+        $search = request('search', false);
+
         $query = $this->model->orderBy($orderByKey, $orderBy);
 
         foreach ($filters as $field => $value) {
@@ -40,7 +46,8 @@ class BaseRepository implements BaseRepositoryInterface
             return new PaginatedResource($result);
         }
 
-        return new BaseResource($result, $this->resourceClass);    }
+        return new BaseResource($result, $this->resourceClass);
+    }
 
     public function find($id): ?BaseResource
     {
