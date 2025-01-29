@@ -18,21 +18,43 @@ class BaseRepository implements BaseRepositoryInterface
         $this->resourceClass = $resourceClass;
     }
 
-    public function all($orderBy = 'DESC', $filters = [], $searchColumns = []): BaseResource|PaginatedResource
+    public function all($orderBy = 'DESC', $with = [], $filters = [], $searchColumns = []): BaseResource|PaginatedResource
     {
         $paginate = request('pagination', false);
-        $perPage = request('per_page', false);
+        $perPage = request('per_page', 15);
         $orderBy = request('order_by', $orderBy);
         $orderByKey = request('order_by_key', 'id');
         $search = request('search', false);
 
-        $query = $this->model->orderBy($orderByKey, $orderBy);
+        $query = $this->buildQuery($orderBy, $orderByKey, $with, $filters, $search, $searchColumns);
 
-        foreach ($filters as $field => $value) {
-            $query->where($field, $value);
+        $result = $paginate ? $query->paginate($perPage) : $query->get();
+
+        return $paginate ? new PaginatedResource($result) : new BaseResource($result, $this->resourceClass);
+    }
+
+    /**
+     * Build a query with filters, search, ordering, and relationships.
+     */
+    protected function buildQuery($orderBy, $orderByKey, $with, $filters, $search, $searchColumns)
+    {
+        $query = empty($with) ? $this->model->orderBy($orderByKey, $orderBy) : $this->model->with($with)->orderBy($orderByKey, $orderBy);
+
+        // Apply filters (supports both 'where' and 'orWhere')
+        foreach ($filters as $filter) {
+            $type = $filter['type'] ?? 'where';
+            $field = $filter['field'] ?? null;
+            $operator = $filter['operator'] ?? '=';
+            $value = $filter['value'] ?? null;
+
+            if (!$field) continue; // Skip invalid filters
+
+            $type === 'orWhere'
+                ? $query->orWhere($field, $operator, $value)
+                : $query->where($field, $operator, $value);
         }
 
-        if ($search && count($searchColumns) > 0) {
+        if ($search && !empty($searchColumns)) {
             $query->where(function ($q) use ($search, $searchColumns) {
                 foreach ($searchColumns as $column) {
                     $q->orWhere($column, 'LIKE', "%$search%");
@@ -40,13 +62,7 @@ class BaseRepository implements BaseRepositoryInterface
             });
         }
 
-        $result = $paginate ? $query->paginate($perPage) : $query->get();
-
-        if ($paginate) {
-            return new PaginatedResource($result);
-        }
-
-        return new BaseResource($result, $this->resourceClass);
+        return $query;
     }
 
     public function find($id): ?BaseResource
