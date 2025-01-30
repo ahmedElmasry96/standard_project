@@ -3,44 +3,28 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 class BaseResource extends JsonResource
 {
     protected $resourceClass;
 
-    /**
-     * Create a new resource instance.
-     *
-     * @param mixed $resource
-     * @param string|null $resourceClass
-     */
     public function __construct($resource, $resourceClass = null)
     {
         parent::__construct($resource);
         $this->resourceClass = $resourceClass;
     }
 
-    /**
-     * Transform the resource into an array.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return array
-     */
-    public function toArray($request)
+    public function toArray($request): ?array
     {
-        // If no specific resource class is provided, use the default transformation
         if (!$this->resourceClass) {
             return parent::toArray($request);
         }
 
-        // Handle null resources
-        if (is_null($this->resource)) {
-            return null;
+        if ($this->resource instanceof Collection) {
+            return $this->resourceClass::collection($this->resource)->toArray($request);
         }
 
-        // Handle collections and individual resources
-        return $this->resource instanceof \Illuminate\Database\Eloquent\Collection
-            ? $this->resourceClass::collection($this->resource)
-            : new $this->resourceClass($this->resource);
+        return (new $this->resourceClass($this->resource))->toArray($request);
     }
 }
