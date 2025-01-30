@@ -5,6 +5,8 @@ namespace App\Repositories;
 use App\Http\Resources\PaginatedResource;
 use App\Repositories\Contracts\BaseRepositoryInterface;
 use App\Http\Resources\BaseResource;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -29,69 +31,80 @@ class BaseRepository implements BaseRepositoryInterface
 
         $query = $this->buildQuery($orderBy, $orderByKey, $with, $filters, $search, $searchColumns);
 
-        $result = $paginate ? $query->paginate($perPage) : $query->get();
+        $result = $paginate
+            ? $query->paginate($perPage)
+            : $query->get();
 
-        return $paginate ? new PaginatedResource($result, $this->resourceClass) : new BaseResource($result, $this->resourceClass);
+        return $paginate
+            ? new PaginatedResource($result, $this->resourceClass)
+            : new BaseResource($result, $this->resourceClass);
     }
 
-    /**
-     * Build a query with filters, search, ordering, and relationships.
-     */
-    protected function buildQuery($orderBy, $orderByKey, $with, $filters, $search, $searchColumns)
+    protected function buildQuery(string $orderBy, string $orderByKey, array $with, array $filters, ?string $search, array $searchColumns)
     {
-        $query = empty($with) ? $this->model->orderBy($orderByKey, $orderBy) : $this->model->with($with)->orderBy($orderByKey, $orderBy);
+        $query = $this->model->newQuery()->with($with);
 
-        // Apply filters (supports both 'where' and 'orWhere')
+        $query->orderBy($orderByKey, $orderBy);
+
+        $this->applyFilters($query, $filters);
+        $this->applySearch($query, $search, $searchColumns);
+
+        return $query;
+    }
+
+    protected function applyFilters($query, array $filters): void
+    {
         foreach ($filters as $filter) {
             $type = $filter['type'] ?? 'where';
             $field = $filter['field'] ?? null;
             $operator = $filter['operator'] ?? '=';
             $value = $filter['value'] ?? null;
 
-            if (!$field) continue; // Skip invalid filters
+            if (!$field) continue;
 
-            $type === 'orWhere'
-                ? $query->orWhere($field, $operator, $value)
-                : $query->where($field, $operator, $value);
+            $query->{$type}($field, $operator, $value);
         }
+    }
 
-        if ($search && !empty($searchColumns)) {
+    protected function applySearch($query, ?string $search, array $searchColumns): void
+    {
+        if ($search && $searchColumns) {
             $query->where(function ($q) use ($search, $searchColumns) {
                 foreach ($searchColumns as $column) {
-                    $q->orWhere($column, 'LIKE', "%$search%");
+                    $q->orWhere($column, 'LIKE', "%{$search}%");
                 }
             });
         }
-
-        return $query;
     }
-    public function find($id, $with = []): ?BaseResource
-    {
-        $query = empty($with) ? $this->model : $this->model->with($with);
-        $result = $query->findOrFail($id);
 
-        return $result ? new BaseResource($result, $this->resourceClass) : null;
+    public function find($id, array $with = []): BaseResource
+    {
+        $result = $this->model->with($with)->findOrFail($id);
+        return new BaseResource($result, $this->resourceClass);
     }
 
     public function create(array $data): BaseResource
     {
         return DB::transaction(function () use ($data) {
             $result = $this->model->create($data);
-            return new BaseResource($result, $this->resourceClass);
+            return new BaseResource($result->fresh(), $this->resourceClass);
         });
     }
 
     public function update($id, array $data): BaseResource
     {
-        $record = $this->find($id);
-        $record->update($data);
-        $updated = $this->find($id);
-        return new BaseResource($updated, $this->resourceClass);
+        $model = $this->model->findOrFail($id);
+
+        DB::transaction(function () use ($model, $data) {
+            $model->update($data);
+        });
+
+        return new BaseResource($model->fresh(), $this->resourceClass);
     }
 
-    public function delete($id)
+    public function delete($id): bool
     {
-        $record = $this->find($id);
-        return $record->delete();
+        $model = $this->model->findOrFail($id);
+        return $model->delete();
     }
 }
